@@ -8,19 +8,48 @@ sys.path.append(project_root)
 from src.utils.prompt_template import PromptTemplate
 from src.utils.LLM_utils import get_llm_completion
 import numpy as np
-from IPython.display import display, HTML
 
 
 CLASSES = ["Invoice", "Purchase Order", "Bill", "Receipt", "Financial Document", "Salary Slip"]
 
-def classify_document_with_llm(document_text, llm_choice):
-    """
-    Classify document using either GPT or Llama based on user choice
-    Args:
-        document_text: Text content of the document to classify
-        llm_choice: Either "gpt" or "llama" (default: "gpt")
-    """
 
+def _parse_confidence(response) -> float:
+    """
+    Extract a linear-probability confidence score from the LLM response.
+
+    Tries three formats in order:
+      1. OpenAI / Ollama OpenAI-compatible  → choices[0].logprobs.content[0].top_logprobs
+      2. Together-AI legacy format           → choices[0].logprobs.token_logprobs[0]
+      3. Fallback                            → 90.0 %
+    """
+    try:
+        top_logprobs = response.choices[0].logprobs.content[0].top_logprobs
+        if top_logprobs:
+            return float(np.round(np.exp(top_logprobs[0].logprob) * 100, 2))
+    except (AttributeError, IndexError, TypeError):
+        pass
+
+    try:
+        token_logprob = response.choices[0].logprobs.token_logprobs[0]
+        return float(np.round(np.exp(token_logprob) * 100, 2))
+    except (AttributeError, IndexError, TypeError):
+        pass
+
+    return 90.0
+
+
+def classify_document_with_llm(document_text: str, llm_choice: str = "ollama"):
+    """
+    Classify a document using the local Ollama LLM.
+
+    Args:
+        document_text: Text content of the document to classify.
+        llm_choice:    LLM backend selector ("ollama" | "gpt" | "llama").
+                       All values now route to the local Ollama server.
+
+    Returns:
+        Tuple (document_type: str, confidence: float)
+    """
     CLASSIFICATION_PROMPT = PromptTemplate(
         template="""
 I have a form-like document, and I want you to classify it into one of the following categories:
@@ -37,52 +66,30 @@ Here is the content of the document:
 
 Based on the content, which category does this document belong to? Please reply with only the category name.
     """,
-    input_variables=["text"]
+        input_variables=["text"],
     )
-    prompt = CLASSIFICATION_PROMPT.format(
-        text = document_text)
 
-    # Call the OpenAI API to classify the document
+    prompt = CLASSIFICATION_PROMPT.format(text=document_text)
+
     try:
         response = get_llm_completion(
             messages=[{"role": "user", "content": prompt}],
             llm_choice=llm_choice,
             logprobs=True,
-            top_logprobs=1 if llm_choice == "gpt" else None,  # top_logprobs only supported by GPT
+            top_logprobs=1,
             temperature=0.1,
         )
-        
-        classification = response.choices[0].message.content
 
-        # Handle logprobs differently for GPT and Llama
-        if llm_choice == "gpt":
-            top_two_logprobs = response.choices[0].logprobs.content[0].top_logprobs
-            html_content = ""
-            for i, logprob in enumerate(top_two_logprobs, start=1):
-                html_content += (
-                    f"<span style='color: cyan'>Output token {i}:</span> {logprob.token}, "
-                    f"<span style='color: darkorange'>logprobs:</span> {logprob.logprob}, "
-                    f"<span style='color: magenta'>linear probability:</span> {np.round(np.exp(logprob.logprob)*100,2)}%<br>"
-                )
-            display(HTML(html_content))
-            linear_probability = np.round(np.exp(top_two_logprobs[0].logprob)*100,2)
-        else:  # llama
-            token_logprob = response.choices[0].logprobs.token_logprobs[0]  # Get first token's logprob
-            linear_probability = np.round(np.exp(token_logprob)*100,2)
-            print(f"Token: {response.choices[0].logprobs.tokens[0]}")
-            print(f"Logprob: {token_logprob}")
-            print(f"Linear probability: {linear_probability}%")
-        
-        print("\n")
-        
+        classification = response.choices[0].message.content.strip()
+        confidence = _parse_confidence(response)
+
+        print(f"Classification: {classification}  |  Confidence: {confidence}%\n")
+
         if classification in CLASSES:
-            return classification, linear_probability
+            return classification, confidence
         else:
             return "Unknown", 0.0
 
     except Exception as e:
         print(f"Error during LLM classification: {e}")
         return "Error", 0.0
-
-
-

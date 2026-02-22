@@ -11,7 +11,7 @@ from multiprocessing import Pool, cpu_count
 from langchain_openai import ChatOpenAI
 
 from src.utils.read_data_utils import DocumentReader
-from src.utils.LLM_utils import get_completion_gpt4
+from src.utils.LLM_utils import get_completion_gpt4, OLLAMA_BASE_URL, OLLAMA_MODEL
 from src.utils.load_baseprompts_utils import load_prompt_from_file
 from src.utils.jsonparser_utils import clean_llm_output, json_to_dataframe
 from src.actor_agents.document_classifier import classify_document_with_llm
@@ -93,7 +93,12 @@ def process_document(file_path: str, extraction_groundtruth: dict, output_dir: s
 
     # Initialize components
     reader = DocumentReader()
-    chat_model = ChatOpenAI(model="gpt-4o-mini", temperature=0.6)
+    chat_model = ChatOpenAI(
+        model=OLLAMA_MODEL,
+        openai_api_key="ollama",
+        openai_api_base=OLLAMA_BASE_URL,
+        temperature=0.6,
+    )
     
     logging.info(f"Processing document: {file_path}")
     
@@ -380,8 +385,8 @@ if __name__ == "__main__":
                        help='Maximum number of parallel workers (default: number of CPU cores)')
     parser.add_argument('--max-steps', type=int, default=3,
                        help='Maximum number of steps before terminating (default: 5)')
-    parser.add_argument('--llm-choice', type=str, default="gpt",
-                    help='Selects an llm (default: gpt, otherwise llama)')
+    parser.add_argument('--llm-choice', type=str, default="ollama",
+                    help='Selects an llm backend (default: ollama; legacy values "gpt"/"llama" also accepted)')
     parser.add_argument('--force', type=bool, default=False,
                     help='Force reprocessing even if cache exists')
     args = parser.parse_args()
