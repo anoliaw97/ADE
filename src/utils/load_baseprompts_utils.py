@@ -22,14 +22,11 @@ SCHEMA_PROMPT_MAPPING = {
 
 # Directories to search for prompt files (in priority order)
 def _prompt_dirs() -> list[str]:
-    current_dir  = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+    current_dir  = os.path.dirname(os.path.abspath(__file__))   # …/ADE/src/utils
+    project_root = os.path.dirname(os.path.dirname(current_dir))  # …/ADE
     return [
         os.path.join(project_root, "src", "actor_agents", "Prompts"),
-        os.path.join(project_root, "Unstructured-Data-Extraction",
-                     "src", "actor_agents", "Prompts"),
-        os.path.join(os.path.dirname(os.path.dirname(current_dir)),
-                     "actor_agents", "Prompts"),
+        os.path.join(project_root, "actor_agents", "Prompts"),
     ]
 
 
