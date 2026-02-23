@@ -11,7 +11,7 @@ from multiprocessing import Pool, cpu_count
 from langchain_openai import ChatOpenAI
 
 from src.utils.read_data_utils import DocumentReader
-from src.utils.LLM_utils import get_completion_gpt4
+from src.utils.LLM_utils import get_completion_gpt4, OLLAMA_BASE_URL, OLLAMA_MODEL
 from src.utils.load_baseprompts_utils import load_prompt_from_file
 from src.utils.jsonparser_utils import clean_llm_output, json_to_dataframe
 from src.actor_agents.document_classifier import classify_document_with_llm
@@ -42,7 +42,12 @@ def process_page_with_learned_prompts(args):
     # Initialize the prompt optimizer
     optimizer = LearnedPromptOptimizer(
         model_save_dir=f"models/prompt_optimizer/{doc_type}",
-        llm=ChatOpenAI(model="gpt-4o-mini", temperature=0.6)
+        llm=ChatOpenAI(
+            model=OLLAMA_MODEL,
+            openai_api_key="ollama",
+            openai_api_base=OLLAMA_BASE_URL,
+            temperature=0.6,
+        )
     )
     
     try:
