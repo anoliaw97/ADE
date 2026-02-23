@@ -1,9 +1,14 @@
-I have a form-like document, and I want you to classify it into one of the following categories:
+I have a document, and I want you to classify it into one of the following categories:
 - Invoice
 - Purchase Order
 - Utility Bill
 - Receipt
 - Financial Document
-- Other
+- Salary Slip
+- Laboratory Report
+
+A "Laboratory Report" contains experimental data, test results, measurement tables,
+analytical figures, graphs, or scientific observations from a lab environment.
 
 Here is the content of the document:
+

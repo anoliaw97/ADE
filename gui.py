@@ -91,6 +91,17 @@ def check_ollama(base_url: str, model: str) -> str:
 # Core pipeline wrapper
 # ---------------------------------------------------------------------------
 
+def load_default_prompt(doc_type: str) -> str:
+    """Return the default extraction prompt text for the chosen document type."""
+    try:
+        from src.utils.load_baseprompts_utils import load_prompt_from_file
+        if not doc_type or doc_type == "— auto-detect —":
+            return ""
+        return load_prompt_from_file(document_type=doc_type)
+    except Exception as exc:
+        return f"# Could not load prompt: {exc}"
+
+
 def run_pipeline(
     uploaded_files,          # list[tempfile paths] from gr.Files
     model_name: str,
@@ -101,6 +112,8 @@ def run_pipeline(
     extraction_gt_dir: str,
     force_reprocess: bool,
     output_dir: str,
+    doc_type_override: str,
+    custom_prompt: str,
     progress=gr.Progress(track_tqdm=True),
 ):
     """
@@ -172,6 +185,11 @@ def run_pipeline(
         except Exception:
             pass
 
+        # Resolve custom prompt / doc-type override
+        _custom_prompt   = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else None
+        _doc_type_override = (doc_type_override if doc_type_override
+                              and doc_type_override != "— auto-detect —" else None)
+
         try:
             result = process_document(
                 file_path=file_path,
@@ -182,6 +200,8 @@ def run_pipeline(
                 max_steps=max_steps,
                 llm_choice=llm_choice,
                 force=force_reprocess,
+                custom_extraction_prompt=_custom_prompt,
+                doc_type_override=_doc_type_override,
             )
 
             all_results.append({"file": fname, "status": "success", "result": result})
@@ -396,6 +416,55 @@ def build_ui() -> gr.Blocks:
                             )
                         force_cb = gr.Checkbox(label="Force reprocess (ignore cache)", value=False)
 
+                        # ── Custom Prompt / Doc-Type Override ────────────
+                        with gr.Accordion("Custom Prompt & Document Type Override", open=False):
+                            gr.Markdown(
+                                "Override the automatic classification and/or the default "
+                                "extraction prompt.  \n"
+                                "**Tip for Lab Reports:** select *Laboratory Report* below and "
+                                "click *Load Default Prompt* to pre-fill the table/graph-focused prompt, "
+                                "then edit it as needed."
+                            )
+                            with gr.Row():
+                                doc_type_dd = gr.Dropdown(
+                                    label="Override Document Type",
+                                    choices=[
+                                        "— auto-detect —",
+                                        "Invoice",
+                                        "Purchase Order",
+                                        "Utility Bill",
+                                        "Receipt",
+                                        "Financial Document",
+                                        "Salary Slip",
+                                        "Laboratory Report",
+                                    ],
+                                    value="— auto-detect —",
+                                    info="Leave on auto-detect unless you want to force a type.",
+                                )
+                                load_prompt_btn = gr.Button("Load Default Prompt", scale=1)
+
+                            custom_prompt_tb = gr.Textbox(
+                                label="Custom Extraction Prompt",
+                                placeholder=(
+                                    "Leave empty to use the built-in prompt for the selected "
+                                    "document type.\n\n"
+                                    "Paste or type your custom prompt here to override it.\n\n"
+                                    "Example rules for lab reports:\n"
+                                    "1. Extract the complete table including all headers, rows, columns.\n"
+                                    "2. If table present, extract ALL rows in exact order as JSON array.\n"
+                                    "3. Extract data ONLY if table present. If no table: {\"no_table\": true}"
+                                ),
+                                lines=14,
+                                max_lines=30,
+                            )
+
+                            # Wire the "Load Default Prompt" button
+                            load_prompt_btn.click(
+                                fn=load_default_prompt,
+                                inputs=[doc_type_dd],
+                                outputs=[custom_prompt_tb],
+                            )
+
                         gr.Markdown("### Optional Groundtruth (for evaluation)")
                         schema_gt_tb = gr.Textbox(
                             label="Schema Groundtruth Folder",
@@ -451,6 +520,7 @@ def build_ui() -> gr.Blocks:
                         files_input, model_input, max_steps_sl, max_workers_sl,
                         llm_choice_dd, schema_gt_tb, extraction_gt_tb,
                         force_cb, output_dir_tb,
+                        doc_type_dd, custom_prompt_tb,     # custom prompt / override
                     ],
                     outputs=[log_out, results_out, metrics_out, download_btn],
                 )
