@@ -12,7 +12,7 @@ from langchain_openai import ChatOpenAI
 
 from src.utils.read_data_utils import DocumentReader
 from src.utils.LLM_utils import get_completion_gpt4, OLLAMA_BASE_URL, OLLAMA_MODEL
-from src.utils.load_baseprompts_utils import load_prompt_from_file
+from src.utils.load_baseprompts_utils import load_prompt_from_file, load_schema_prompt_for_type
 from src.utils.jsonparser_utils import clean_llm_output, json_to_dataframe
 from src.actor_agents.document_classifier import classify_document_with_llm
 from src.environments.schema_builder_env import SchemaBuilderEnv
@@ -41,21 +41,25 @@ def update_metrics_excel(metrics_dict: dict, excel_path: str = "output\metrics\e
     logging.info(f"Metrics updated in: {excel_path}")
 
 @cache_results
-def process_document(file_path: str, extraction_groundtruth: dict, output_dir: str = None, 
-                    schema_groundtruth: dict = None, max_workers: int = None, max_steps: int = 5, 
-                    llm_choice: str ="gpt", force: bool = False) -> dict:
+def process_document(file_path: str, extraction_groundtruth: dict, output_dir: str = None,
+                    schema_groundtruth: dict = None, max_workers: int = None, max_steps: int = 5,
+                    llm_choice: str = "ollama", force: bool = False,
+                    custom_extraction_prompt: str = None,
+                    doc_type_override: str = None) -> dict:
     """
     Process a document through the complete pipeline with parallel page processing
-    
+
     Args:
-        file_path: Path to the document
-        extraction_groundtruth: Groundtruth for data extraction
-        output_dir: Directory to save results
-        schema_groundtruth: Groundtruth for schema building
-        max_workers: Maximum number of parallel workers (default: number of CPU cores)
-        max_steps: Maximum number of steps before terminating
-        llm_choice: llama or gpt
-        force: Force reprocessing even if cache exists (default: False)
+        file_path:                 Path to the document
+        extraction_groundtruth:    Groundtruth for data extraction (optional)
+        output_dir:                Directory to save results
+        schema_groundtruth:        Groundtruth for schema building (optional)
+        max_workers:               Maximum number of parallel workers
+        max_steps:                 Maximum RL steps before terminating
+        llm_choice:                "ollama" | "gpt" | "llama"
+        force:                     Force reprocessing even if cache exists
+        custom_extraction_prompt:  Override the default extraction prompt with custom text
+        doc_type_override:         Skip auto-classification and use this document type directly
     """
     # Create required output directory structure
     if output_dir:
@@ -136,10 +140,15 @@ def process_document(file_path: str, extraction_groundtruth: dict, output_dir: s
         logging.error(f"Error reading document: {str(e)}")
         raise
 
-    # 2. Classify document using first page
+    # 2. Classify document using first page  (or use the override if provided)
     classification_start = time.time()
     try:
-        doc_type, confidence = classify_document_with_llm(pages_text[0], llm_choice)  # Unpack only two values
+        if doc_type_override:
+            doc_type   = doc_type_override
+            confidence = 100.0
+            logging.info(f"Document type manually set to: {doc_type} (override)")
+        else:
+            doc_type, confidence = classify_document_with_llm(pages_text[0], llm_choice)
         metrics['Document_Type'] = doc_type
         metrics['Classification_Confidence'] = confidence
         logging.info(f"Document classified as: {doc_type} (confidence: {confidence}%)")
@@ -175,7 +184,11 @@ def process_document(file_path: str, extraction_groundtruth: dict, output_dir: s
     # 3. Build and optimize schema
     schema_start = time.time()
     try:
-        schema_prompt = load_prompt_from_file(filename="schema_builder_prompt.txt")
+        # Use a document-type-specific schema prompt when available (e.g. lab reports)
+        schema_prompt = (
+            load_schema_prompt_for_type(doc_type)
+            or load_prompt_from_file(filename="schema_builder_prompt.txt")
+        )
         schema_env = SchemaBuilderEnv(
             baseprompt=schema_prompt,
             document_text=pages_text[0],  # Use first page for schema building
@@ -206,7 +219,10 @@ def process_document(file_path: str, extraction_groundtruth: dict, output_dir: s
     # 4. Parallel Data Extraction
     extraction_start = time.time()
     try:
-        extraction_prompt = load_prompt_from_file(document_type=doc_type)
+        # Use custom prompt if provided, otherwise load from file
+        extraction_prompt = custom_extraction_prompt or load_prompt_from_file(document_type=doc_type)
+        if custom_extraction_prompt:
+            logging.info("Using custom extraction prompt provided by caller")
         
         # Prepare arguments for parallel processing
         process_args = [

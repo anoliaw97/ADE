@@ -10,7 +10,15 @@ from src.utils.LLM_utils import get_llm_completion
 import numpy as np
 
 
-CLASSES = ["Invoice", "Purchase Order", "Bill", "Receipt", "Financial Document", "Salary Slip"]
+CLASSES = [
+    "Invoice",
+    "Purchase Order",
+    "Utility Bill",
+    "Receipt",
+    "Financial Document",
+    "Salary Slip",
+    "Laboratory Report",
+]
 
 
 def _parse_confidence(response) -> float:
@@ -52,13 +60,17 @@ def classify_document_with_llm(document_text: str, llm_choice: str = "ollama"):
     """
     CLASSIFICATION_PROMPT = PromptTemplate(
         template="""
-I have a form-like document, and I want you to classify it into one of the following categories:
+I have a document, and I want you to classify it into one of the following categories:
 - Invoice
 - Purchase Order
 - Utility Bill
 - Receipt
 - Financial Document
 - Salary Slip
+- Laboratory Report
+
+A "Laboratory Report" contains experimental data, test results, measurement tables,
+analytical figures, graphs, or scientific observations from a lab environment.
 
 Here is the content of the document:
 
