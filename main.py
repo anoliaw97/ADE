@@ -405,6 +405,19 @@ if __name__ == "__main__":
                     help='Selects an llm backend (default: ollama; legacy values "gpt"/"llama" also accepted)')
     parser.add_argument('--force', type=bool, default=False,
                     help='Force reprocessing even if cache exists')
+    parser.add_argument('--mode', type=str, default=None,
+                    choices=['lab', 'lab-baseline'],
+                    help=(
+                        'Shortcut processing modes. '
+                        '"lab" forces classification as "General Laboratory Report" and uses the full lab prompt. '
+                        '"lab-baseline" uses the simpler baseline lab prompt for quick extraction.'
+                    ))
+    parser.add_argument('--lab-type', type=str, default=None,
+                    help=(
+                        'Override document type for lab mode. Must be one of the recognised lab subcategories '
+                        '(e.g. "Chemical Analysis Report", "Environmental Analysis Report"). '
+                        'Only used when --mode lab or --mode lab-baseline is set.'
+                    ))
     args = parser.parse_args()
 
     try:
@@ -413,7 +426,28 @@ if __name__ == "__main__":
         logging.info("Starting document processing pipeline")
         logging.info(f"Input path: {args.input_path}")
         logging.info(f"Output directory: {args.output_dir}")
-        
+
+        # Resolve --mode shortcuts into doc_type_override / custom_extraction_prompt
+        _cli_doc_type_override = None
+        _cli_custom_prompt     = None
+        if args.mode in ('lab', 'lab-baseline'):
+            from src.actor_agents.document_classifier import LAB_REPORT_CLASSES
+            from src.utils.load_baseprompts_utils import load_prompt_from_file
+
+            if args.lab_type and args.lab_type in LAB_REPORT_CLASSES:
+                _cli_doc_type_override = args.lab_type
+            else:
+                _cli_doc_type_override = "General Laboratory Report"
+
+            if args.mode == 'lab-baseline':
+                try:
+                    _cli_custom_prompt = load_prompt_from_file(filename="labreport_baseline_prompt.txt")
+                    logging.info("Lab-baseline mode: using labreport_baseline_prompt.txt")
+                except FileNotFoundError:
+                    logging.warning("labreport_baseline_prompt.txt not found; falling back to full lab prompt")
+
+            logging.info(f"Mode '{args.mode}': doc_type forced to '{_cli_doc_type_override}'")
+
         # Initialize groundtruth variables
         schema_groundtruth = None
         extraction_groundtruth = None
@@ -424,17 +458,19 @@ if __name__ == "__main__":
             schema_groundtruth = get_matching_groundtruth(args.input_path, args.schema_groundtruth) if args.schema_groundtruth else None
             extraction_groundtruth = get_matching_groundtruth(args.input_path, args.extraction_groundtruth) if args.extraction_groundtruth else None
     
-            try: 
+            try:
                 logging.info(f"Processing single file: {args.input_path}")
                 result = process_document(
-                    args.input_path, 
-                    extraction_groundtruth,  
+                    args.input_path,
+                    extraction_groundtruth,
                     args.output_dir,
                     schema_groundtruth,
                     args.max_workers,
                     args.max_steps,
                     args.llm_choice,
-                    args.force
+                    args.force,
+                    custom_extraction_prompt=_cli_custom_prompt,
+                    doc_type_override=_cli_doc_type_override,
                 )
                 logging.info("\nProcessing complete!")
                 logging.info(f"Document Type: {result['document_type']}")
@@ -474,7 +510,9 @@ if __name__ == "__main__":
                             args.max_workers,
                             args.max_steps,
                             args.llm_choice,
-                            args.force
+                            args.force,
+                            custom_extraction_prompt=_cli_custom_prompt,
+                            doc_type_override=_cli_doc_type_override,
                         )
                         logging.info(f"Successfully processed {file}")
                     except Exception as e:

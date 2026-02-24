@@ -7,6 +7,7 @@ Usage:
     python gui.py
     python gui.py --port 7860 --share          # public tunnel via Gradio share
     python gui.py --host 0.0.0.0 --port 8080   # custom host/port
+    python gui.py --lab                        # open GUI in lab-report mode
 """
 
 from __future__ import annotations
@@ -241,6 +242,83 @@ def run_pipeline(
     yield drain_log(), json.dumps(all_results, indent=2, default=str), _fmt_metrics(metrics_rows), download_path
 
 
+# ---------------------------------------------------------------------------
+# Lab report table / figure renderer
+# ---------------------------------------------------------------------------
+
+LAB_SUBCATEGORIES = [
+    "Chemical Analysis Report",
+    "Environmental Analysis Report",
+    "Microbiology Report",
+    "Material Testing Report",
+    "Clinical Laboratory Report",
+    "Geotechnical Report",
+    "Food Analysis Report",
+    "General Laboratory Report",
+    "Laboratory Report",   # generic alias kept for backward compat
+]
+
+ALL_DOC_TYPES = [
+    "— auto-detect —",
+    # Non-lab
+    "Invoice", "Purchase Order", "Utility Bill",
+    "Receipt", "Financial Document", "Salary Slip",
+    # Lab subcategories
+    *LAB_SUBCATEGORIES,
+]
+
+
+def render_lab_tables(json_text: str):
+    """
+    Parse extracted JSON and return:
+    - A list of (table_name, pd.DataFrame) for any embedded tables, OR
+    - A plain text summary when no tables are found.
+
+    Returns (status_md, list_of_gr_Dataframe_data)
+    """
+    import pandas as pd
+
+    if not json_text or not json_text.strip():
+        return "No JSON provided.", []
+
+    try:
+        data = json.loads(json_text) if isinstance(json_text, str) else json_text
+    except json.JSONDecodeError as exc:
+        return f"JSON parse error: {exc}", []
+
+    if isinstance(data, list) and data and isinstance(data[0], dict) and "result" in data[0]:
+        # gui result wrapper: [{file, status, result}, ...]
+        data = data[0].get("result", data)
+
+    tables_found = []
+
+    def _try_table(obj, name=""):
+        """Recursively hunt for list-of-dicts (tabular data)."""
+        if isinstance(obj, list) and obj and all(isinstance(r, dict) for r in obj):
+            try:
+                df = pd.DataFrame(obj)
+                tables_found.append((name, df))
+                return
+            except Exception:
+                pass
+        if isinstance(obj, dict):
+            for key, val in obj.items():
+                _try_table(val, name=key if not name else f"{name} › {key}")
+
+    _try_table(data)
+
+    if not tables_found:
+        # no_table flag or genuinely empty
+        if isinstance(data, dict) and data.get("no_table"):
+            return "Document contains **no table** (the model returned `{\"no_table\": true}`).", []
+        return "No tabular data found in the extracted JSON.", []
+
+    status = f"Found **{len(tables_found)}** table(s) in the extracted data."
+    # Return as list of (label, list-of-lists) for gr.Dataframe
+    frames = [(lbl, df.values.tolist(), list(df.columns)) for lbl, df in tables_found]
+    return status, frames
+
+
 def _fmt_metrics(rows: list[dict]) -> str:
     """Format metrics rows as a simple text table."""
     if not rows:
@@ -362,7 +440,22 @@ DESCRIPTION = """
 > Make sure Ollama is running (`ollama serve`) and a model is pulled (`ollama pull llama3.2`) before processing.
 """
 
-def build_ui() -> gr.Blocks:
+LAB_DESCRIPTION = """
+# ADE — Scientific Laboratory Report Extraction
+
+**Local AI pipeline** specialised for extracting structured data from scientific lab reports.
+
+Supported subcategories:
+`Chemical Analysis` · `Environmental` · `Microbiology` · `Material Testing` ·
+`Clinical` · `Geotechnical` · `Food Analysis` · `General Lab Report`
+
+Extracts: **tables** (with detection limits, uncertainty, QC), **figures** (with equations / R²),
+and **narrative conclusions** into structured JSON.
+
+> Make sure Ollama is running (`ollama serve`) before processing.
+"""
+
+def build_ui(lab_mode: bool = False) -> gr.Blocks:
     with gr.Blocks(
         title="ADE – Agentic Document Extraction",
         theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
@@ -372,7 +465,7 @@ def build_ui() -> gr.Blocks:
         """,
     ) as demo:
 
-        gr.Markdown(DESCRIPTION)
+        gr.Markdown(LAB_DESCRIPTION if lab_mode else DESCRIPTION)
 
         # ── TABS ─────────────────────────────────────────────────────────
         with gr.Tabs():
@@ -417,28 +510,25 @@ def build_ui() -> gr.Blocks:
                         force_cb = gr.Checkbox(label="Force reprocess (ignore cache)", value=False)
 
                         # ── Custom Prompt / Doc-Type Override ────────────
-                        with gr.Accordion("Custom Prompt & Document Type Override", open=False):
+                        _default_doctype = (
+                            "General Laboratory Report" if lab_mode else "— auto-detect —"
+                        )
+                        with gr.Accordion(
+                            "Custom Prompt & Document Type Override",
+                            open=lab_mode,   # auto-open in lab mode
+                        ):
                             gr.Markdown(
                                 "Override the automatic classification and/or the default "
                                 "extraction prompt.  \n"
-                                "**Tip for Lab Reports:** select *Laboratory Report* below and "
+                                "**Tip for Lab Reports:** select a lab subcategory below and "
                                 "click *Load Default Prompt* to pre-fill the table/graph-focused prompt, "
                                 "then edit it as needed."
                             )
                             with gr.Row():
                                 doc_type_dd = gr.Dropdown(
                                     label="Override Document Type",
-                                    choices=[
-                                        "— auto-detect —",
-                                        "Invoice",
-                                        "Purchase Order",
-                                        "Utility Bill",
-                                        "Receipt",
-                                        "Financial Document",
-                                        "Salary Slip",
-                                        "Laboratory Report",
-                                    ],
-                                    value="— auto-detect —",
+                                    choices=ALL_DOC_TYPES,
+                                    value=_default_doctype,
                                     info="Leave on auto-detect unless you want to force a type.",
                                 )
                                 load_prompt_btn = gr.Button("Load Default Prompt", scale=1)
@@ -589,7 +679,57 @@ def build_ui() -> gr.Blocks:
                     outputs=[rb_content],
                 )
 
-            # ── Tab 4: Ollama Health Check ───────────────────────────────
+            # ── Tab 4: Lab Table Viewer ──────────────────────────────────
+            with gr.TabItem("Lab Table Viewer"):
+                gr.Markdown(
+                    "Paste extracted JSON (from the **Process Documents** tab or a saved file) "
+                    "to visualise any embedded data tables."
+                )
+                with gr.Row():
+                    ltv_json_in = gr.Textbox(
+                        label="Extracted JSON",
+                        lines=12,
+                        placeholder='{"results_table": [{"Sample": "A1", "pH": 7.4}, ...]}'
+                    )
+                    ltv_btn = gr.Button("Render Tables", variant="primary", scale=0)
+
+                ltv_status = gr.Markdown("—")
+
+                # We render up to 5 tables dynamically
+                _MAX_TABLES = 5
+                ltv_frames = []
+                for _i in range(_MAX_TABLES):
+                    with gr.Group(visible=False) as _grp:
+                        _lbl  = gr.Markdown(f"**Table {_i + 1}**")
+                        _df   = gr.Dataframe(interactive=False, wrap=True)
+                        ltv_frames.append((_grp, _lbl, _df))
+
+                def _render_tables(json_text):
+                    status_md, tables = render_lab_tables(json_text)
+                    updates = [gr.update(value=status_md)]  # ltv_status
+                    for i in range(_MAX_TABLES):
+                        if i < len(tables):
+                            lbl_txt, rows, cols = tables[i]
+                            updates += [
+                                gr.update(visible=True),           # group
+                                gr.update(value=f"**{lbl_txt}**"), # label
+                                gr.update(value=rows, headers=cols, visible=True),  # dataframe
+                            ]
+                        else:
+                            updates += [
+                                gr.update(visible=False),
+                                gr.update(value=""),
+                                gr.update(visible=False),
+                            ]
+                    return updates
+
+                _render_outputs = [ltv_status]
+                for grp, lbl, df in ltv_frames:
+                    _render_outputs += [grp, lbl, df]
+
+                ltv_btn.click(fn=_render_tables, inputs=[ltv_json_in], outputs=_render_outputs)
+
+            # ── Tab 5: Ollama Health Check ───────────────────────────────
             with gr.TabItem("Ollama Status"):
                 gr.Markdown("Check that the local Ollama server is reachable and the chosen model is available.")
                 with gr.Row():
@@ -610,7 +750,7 @@ def build_ui() -> gr.Blocks:
                     outputs=[hc_status],
                 )
 
-            # ── Tab 5: Help ──────────────────────────────────────────────
+            # ── Tab 6: Help ──────────────────────────────────────────────
             with gr.TabItem("Help"):
                 gr.Markdown("""
 ## Quick Start
@@ -633,16 +773,29 @@ pip install -r requirements.txt
 
 ### 3. Launch the GUI
 ```bash
+# General mode
 python gui.py
+
+# Scientific lab report mode (pre-sets lab defaults)
+python gui.py --lab
 ```
 
 ### 4. CLI usage (without GUI)
 ```bash
-# Single file
+# Single file (auto-detect type)
 python main.py /path/to/document.pdf --output-dir output --max-steps 3
 
 # Directory of files
 python main.py /path/to/docs/ --output-dir output --llm-choice ollama
+
+# Lab report mode — forces lab classification
+python main.py /path/to/report.pdf --mode lab
+
+# Lab baseline mode — fast single-pass extraction (no RL optimisation)
+python main.py /path/to/report.pdf --mode lab-baseline
+
+# Force a specific lab subcategory
+python main.py /path/to/report.pdf --mode lab --lab-type "Chemical Analysis Report"
 
 # With groundtruth evaluation
 python main.py /path/to/docs/ \\
@@ -651,20 +804,31 @@ python main.py /path/to/docs/ \\
 ```
 
 ### Document Types Supported
-| Type | Extensions |
-|------|-----------|
+| File Format | Extensions |
+|------------|-----------|
 | PDF | `.pdf` (searchable & scanned via OCR) |
 | Word | `.docx`, `.doc` |
 | Images | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.bmp` |
 | Text | `.txt` |
 
 ### Extraction Categories
-- Invoice
-- Purchase Order
-- Utility Bill
-- Receipt
-- Financial Document
-- Salary Slip
+
+**General documents**
+- Invoice · Purchase Order · Utility Bill · Receipt · Financial Document · Salary Slip
+
+**Scientific laboratory reports**
+| Subcategory | Typical contents |
+|-------------|-----------------|
+| Chemical Analysis Report | Concentration tables, calibration curves, LOD/LOQ |
+| Environmental Analysis Report | Water/air/soil results, regulatory limits |
+| Microbiology Report | Colony counts, MPN, zone-of-inhibition |
+| Material Testing Report | Tensile/compression strength, hardness, fatigue |
+| Clinical Laboratory Report | Patient results, reference ranges, flags |
+| Geotechnical Report | Soil classification, bearing capacity, SPT data |
+| Food Analysis Report | Nutritional content, contaminant limits |
+| General Laboratory Report | Any other lab document |
+
+> All lab subcategories share the same RL-optimised extraction pipeline with table and figure support.
 
 ### Architecture
 ```
@@ -696,9 +860,11 @@ def main():
     parser.add_argument("--port",  type=int, default=7860, help="Port (default: 7860)")
     parser.add_argument("--share", action="store_true",
                         help="Create a public Gradio share link")
+    parser.add_argument("--lab",   action="store_true",
+                        help="Open GUI in lab-report mode (pre-selects lab type, opens prompt editor)")
     args = parser.parse_args()
 
-    demo = build_ui()
+    demo = build_ui(lab_mode=args.lab)
     demo.queue(max_size=4)
     demo.launch(
         server_name=args.host,

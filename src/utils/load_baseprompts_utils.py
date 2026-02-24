@@ -6,18 +6,38 @@ import os
 # ---------------------------------------------------------------------------
 
 PROMPT_MAPPING = {
+    # Non-laboratory documents
     "Invoice":            "invoice_prompt.txt",
     "Purchase Order":     "purchaseorders_prompt.txt",
     "Utility Bill":       "utilitybill_prompt.txt",
     "Financial Document": "financial_prompt.txt",
     "Receipt":            "invoice_prompt.txt",        # receipts share invoice structure
     "Salary Slip":        "salaryslip_prompt.txt",
-    "Laboratory Report":  "labreport_prompt.txt",      # table/graph-focused extraction
+    # Scientific laboratory report subcategories — all share the same extraction pipeline
+    "Chemical Analysis Report":     "labreport_prompt.txt",
+    "Environmental Analysis Report": "labreport_prompt.txt",
+    "Microbiology Report":          "labreport_prompt.txt",
+    "Material Testing Report":      "labreport_prompt.txt",
+    "Clinical Laboratory Report":   "labreport_prompt.txt",
+    "Geotechnical Report":          "labreport_prompt.txt",
+    "Food Analysis Report":         "labreport_prompt.txt",
+    "General Laboratory Report":    "labreport_prompt.txt",
+    # Legacy generic lab type (kept for backward compatibility)
+    "Laboratory Report":  "labreport_prompt.txt",
     "Unknown":            "financial_prompt.txt",      # safe fallback
 }
 
 SCHEMA_PROMPT_MAPPING = {
-    "Laboratory Report":  "labreport_schema_prompt.txt",
+    # All lab subcategories and the generic alias use the same schema prompt
+    "Chemical Analysis Report":     "labreport_schema_prompt.txt",
+    "Environmental Analysis Report": "labreport_schema_prompt.txt",
+    "Microbiology Report":          "labreport_schema_prompt.txt",
+    "Material Testing Report":      "labreport_schema_prompt.txt",
+    "Clinical Laboratory Report":   "labreport_schema_prompt.txt",
+    "Geotechnical Report":          "labreport_schema_prompt.txt",
+    "Food Analysis Report":         "labreport_schema_prompt.txt",
+    "General Laboratory Report":    "labreport_schema_prompt.txt",
+    "Laboratory Report":            "labreport_schema_prompt.txt",
 }
 
 # Directories to search for prompt files (in priority order)
