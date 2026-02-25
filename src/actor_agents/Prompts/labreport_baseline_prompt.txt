@@ -1,0 +1,3 @@
+Extract all data from the laboratory report below and return it as JSON.
+Include: report date, lab name, sample ID, all test parameters with values and units, reference ranges, and result status.
+Return only the JSON object.

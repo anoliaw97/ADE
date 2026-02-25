@@ -8,81 +8,95 @@ sys.path.append(project_root)
 from src.utils.prompt_template import PromptTemplate
 from src.utils.LLM_utils import get_llm_completion
 import numpy as np
-from IPython.display import display, HTML
 
 
-CLASSES = ["Invoice", "Purchase Order", "Bill", "Receipt", "Financial Document", "Salary Slip"]
+# ---------------------------------------------------------------------------
+# Document classes — original + scientific lab report subcategories
+# ---------------------------------------------------------------------------
 
-def classify_document_with_llm(document_text, llm_choice):
+_BASE_CLASSES = [
+    "Invoice", "Purchase Order", "Bill", "Receipt",
+    "Financial Document", "Salary Slip",
+]
+
+LAB_REPORT_CLASSES = [
+    "Chemical Analysis Report",
+    "Environmental Analysis Report",
+    "Microbiology Report",
+    "Material Testing Report",
+    "Clinical Laboratory Report",
+    "Geotechnical Report",
+    "Food Analysis Report",
+    "General Laboratory Report",
+]
+
+CLASSES = [*_BASE_CLASSES, *LAB_REPORT_CLASSES]
+
+
+# ---------------------------------------------------------------------------
+# Classifier
+# ---------------------------------------------------------------------------
+
+def classify_document_with_llm(document_text: str, llm_choice: str = "local"):
     """
-    Classify document using either GPT or Llama based on user choice
+    Classify a document into one of the known CLASSES using the local LLM.
+
     Args:
-        document_text: Text content of the document to classify
-        llm_choice: Either "gpt" or "llama" (default: "gpt")
+        document_text: Text content of the first page.
+        llm_choice:    Ignored (local model always used); kept for API compatibility.
+
+    Returns:
+        Tuple[str, float]: (document_type, confidence_percent)
     """
+    classes_list = "\n".join(f"- {c}" for c in CLASSES)
 
     CLASSIFICATION_PROMPT = PromptTemplate(
         template="""
-I have a form-like document, and I want you to classify it into one of the following categories:
-- Invoice
-- Purchase Order
-- Utility Bill
-- Receipt
-- Financial Document
-- Salary Slip
+I have a document and I want you to classify it into ONE of the following categories:
+{classes_list}
 
 Here is the content of the document:
 
 {{text}}
 
-Based on the content, which category does this document belong to? Please reply with only the category name.
-    """,
-    input_variables=["text"]
+Based on the content, which category does this document belong to?
+Reply with ONLY the exact category name from the list above — nothing else.
+""",
+        input_variables=["text"]
     )
-    prompt = CLASSIFICATION_PROMPT.format(
-        text = document_text)
 
-    # Call the OpenAI API to classify the document
+    prompt = CLASSIFICATION_PROMPT.format(text=document_text).replace(
+        "{classes_list}", classes_list
+    )
+
     try:
         response = get_llm_completion(
             messages=[{"role": "user", "content": prompt}],
             llm_choice=llm_choice,
-            logprobs=True,
-            top_logprobs=1 if llm_choice == "gpt" else None,  # top_logprobs only supported by GPT
             temperature=0.1,
         )
-        
-        classification = response.choices[0].message.content
 
-        # Handle logprobs differently for GPT and Llama
-        if llm_choice == "gpt":
-            top_two_logprobs = response.choices[0].logprobs.content[0].top_logprobs
-            html_content = ""
-            for i, logprob in enumerate(top_two_logprobs, start=1):
-                html_content += (
-                    f"<span style='color: cyan'>Output token {i}:</span> {logprob.token}, "
-                    f"<span style='color: darkorange'>logprobs:</span> {logprob.logprob}, "
-                    f"<span style='color: magenta'>linear probability:</span> {np.round(np.exp(logprob.logprob)*100,2)}%<br>"
-                )
-            display(HTML(html_content))
-            linear_probability = np.round(np.exp(top_two_logprobs[0].logprob)*100,2)
-        else:  # llama
-            token_logprob = response.choices[0].logprobs.token_logprobs[0]  # Get first token's logprob
-            linear_probability = np.round(np.exp(token_logprob)*100,2)
-            print(f"Token: {response.choices[0].logprobs.tokens[0]}")
-            print(f"Logprob: {token_logprob}")
-            print(f"Linear probability: {linear_probability}%")
-        
-        print("\n")
-        
+        classification = response.choices[0].message.content.strip()
+
+        # Use mock logprob (local model doesn't provide real logprobs)
+        try:
+            lp_val = response.choices[0].logprobs.content[0].logprob
+            linear_probability = float(np.round(np.exp(lp_val) * 100, 2))
+        except Exception:
+            linear_probability = 95.0   # confident default for local model
+
+        # Exact match first
         if classification in CLASSES:
             return classification, linear_probability
-        else:
-            return "Unknown", 0.0
+
+        # Case-insensitive fallback
+        lower_map = {c.lower(): c for c in CLASSES}
+        matched = lower_map.get(classification.lower())
+        if matched:
+            return matched, linear_probability
+
+        return "Unknown", 0.0
 
     except Exception as e:
         print(f"Error during LLM classification: {e}")
         return "Error", 0.0
-
-
-

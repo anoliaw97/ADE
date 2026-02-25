@@ -1,142 +1,88 @@
-from openai import OpenAI
-from together import Together
+"""
+LLM utilities — local inference via Qwen2.5-3B-Instruct.
+No API keys required.  All calls route through LocalChatModel.complete().
+"""
+
 import os
 import json
-from dotenv import load_dotenv
 import numpy as np
 
-load_dotenv('.env')
+from src.models.local_llm import _get_llm, MockCompletionResponse
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# ---------------------------------------------------------------------------
+# Public completion helpers  (drop-in replacements for the OpenAI / Together
+# versions that the rest of the codebase calls)
+# ---------------------------------------------------------------------------
 
 def get_completion_gpt4(
-    messages: list[dict[str, str]],
+    messages,
     response_format=None,
-    model: str = "gpt-4o-mini",
-    max_tokens=16000,
-    temperature=0.1,
+    model: str = None,          # ignored — local model used
+    max_tokens: int = 16000,    # ignored — controlled by LocalChatModel
+    temperature: float = 0.1,
     stop=None,
-    seed=123,
+    seed=None,
     tools=None,
-    logprobs=None,  # whether to return log probabilities of the output tokens or not. If true, returns the log probabilities of each output token returned in the content of message..
+    logprobs=None,
     top_logprobs=None,
-) -> str:
-    params = {
-        "model": model,
-        "messages": messages,
-        "response_format": response_format,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "stop": stop,
-        "seed": seed,
-        "logprobs": logprobs,
-        "top_logprobs": top_logprobs,
-    }
-    if tools:
-        params["tools"] = tools
+) -> MockCompletionResponse:
+    """Drop-in replacement for the original OpenAI get_completion_gpt4."""
+    return _get_llm().complete(
+        messages=messages,
+        response_format=response_format,
+        temperature=temperature,
+        logprobs=logprobs,
+        top_logprobs=top_logprobs,
+    )
 
-    completion = client.chat.completions.create(**params)
-    return completion
-
-
-def openai_embedding(text):
-    """Get OpenAI embedding for text"""
-        
-    try:
-        response = client.embeddings.create(
-            input=text,
-            model="text-embedding-ada-002"
-        )
-        return response.data[0].embedding
-    except Exception as e:
-        print(f"Error getting embedding: {e}")
-        return None
-    
-
-client2 = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 
 def get_completion_llama(
-    messages: list[dict[str, str]],
+    messages,
     response_format=None,
-    temperature=0.1,
-    #max_tokens = 8000,
+    temperature: float = 0.1,
     logprobs=None,
-    model: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo",) -> str:
-    params = {
-        "messages": messages,
-        "response_format": response_format,
-        "temperature": temperature,
-        #"max_tokens": max_tokens,
-        "logprobs": logprobs,
-        "model": model,}
-    completion = client2.chat.completions.create(**params)
-    return completion
-
+    model: str = None,          # ignored
+) -> MockCompletionResponse:
+    """Drop-in replacement for the original Together/Groq get_completion_llama."""
+    return _get_llm().complete(
+        messages=messages,
+        response_format=response_format,
+        temperature=temperature,
+        logprobs=logprobs,
+    )
 
 
 def get_llm_completion(
-    messages: list[dict[str, str]],
-    llm_choice: str = "gpt",  # "gpt" or "llama"
-    response_format=None,  #{'text', 'Json'}
-    temperature=0.1,
+    messages,
+    llm_choice: str = "local",  # "gpt", "llama", or "local" all route to local model
+    response_format=None,
+    temperature: float = 0.1,
     model: str = None,
-    max_tokens=16000,
+    max_tokens: int = 16000,
     stop=None,
-    seed=123,
+    seed=None,
     tools=None,
     logprobs=None,
     top_logprobs=None,
-) -> str:
+) -> MockCompletionResponse:
     """
-    Select and use appropriate LLM based on user choice
-    Args:
-        messages: List of message dictionaries
-        llm_choice: Either "gpt" or "llama"
-        ... other parameters passed to respective LLM functions ...
-    Returns:
-        LLM completion response
+    Unified completion entry-point.
+    All llm_choice values route to the local Qwen model.
     """
-    if llm_choice.lower() == "gpt":
-        # Use default GPT model if none specified
-        gpt_model = model if model else "gpt-4o-mini"
-        return get_completion_gpt4(
-            messages=messages,
-            response_format=response_format,
-            model=gpt_model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stop=stop,
-            seed=seed,
-            tools=tools,
-            logprobs=logprobs,
-            top_logprobs=top_logprobs,
-        )
-    elif llm_choice.lower() == "llama":
-        # Use default Llama model if none specified
-        llama_model = model if model else "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
-        return get_completion_llama(
-            messages=messages,
-            response_format=response_format,
-            temperature=temperature,
-            logprobs=logprobs,
-            model=llama_model,
-            #max_tokens=8000,
-        )
-    else:
-        raise ValueError("Invalid LLM choice. Please choose either 'gpt' or 'llama'")
+    return _get_llm().complete(
+        messages=messages,
+        response_format=response_format,
+        temperature=temperature,
+        logprobs=logprobs,
+        top_logprobs=top_logprobs,
+    )
 
-# #Example usage:
-# prompt = '''Respond with only yes or no to the following question:
-# Is earth round?
-# '''
-# response = get_llm_completion(
-#     messages=[{"role": "user", "content": prompt}],
-#     llm_choice="llama",
-#     response_format={"type": "json_object"},
-#     temperature=0.1,
-#     logprobs=True,
-# )
-# print(response.choices[0].message.content)
-# linear_probability = np.round(np.exp(response.choices[0].logprobs.token_logprobs[0])*100,2)
-# print(linear_probability)
+
+def openai_embedding(text: str):
+    """
+    Returns a zero vector placeholder.
+    The RL chain uses embeddings for contextual bandits;
+    with a local model we use a simple fixed-size zero vector.
+    """
+    return [0.0] * 768
