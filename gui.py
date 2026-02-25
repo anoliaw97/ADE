@@ -3,7 +3,7 @@ ADE – Agentic Document Extraction  |  Gradio GUI
 =================================================
 Launches a web-based interface for the full ADE pipeline.
 
-Tech stack: OpenAI (gpt-4o-mini) · TogetherAI (Llama) · LangChain · Gymnasium · VowpalWabbit · PaddleOCR
+Tech stack: OpenAI (gpt-4o-mini) · Groq/Llama (free) · LangChain · Gymnasium · VowpalWabbit · PaddleOCR
 
 Usage:
     python gui.py
@@ -82,10 +82,10 @@ class _QueueHandler(logging.Handler):
 
 
 # ---------------------------------------------------------------------------
-# OpenAI / TogetherAI connectivity check
+# OpenAI / Groq connectivity check
 # ---------------------------------------------------------------------------
 
-def check_api_status(openai_key: str, together_key: str) -> str:
+def check_api_status(openai_key: str, groq_key: str) -> str:
     lines = []
 
     # Check OpenAI
@@ -98,14 +98,18 @@ def check_api_status(openai_key: str, together_key: str) -> str:
     except Exception as exc:
         lines.append(f"**OpenAI** ✗ — {exc}")
 
-    # Check TogetherAI
+    # Check Groq
     try:
-        import together
-        together.api_key = together_key.strip() or os.getenv("TOGETHER_API_KEY", "")
-        models = together.Models.list()
-        lines.append(f"**TogetherAI** ✓ — connected ({len(models)} models available)")
+        from openai import OpenAI as _OAI
+        groq = _OAI(
+            api_key=groq_key.strip() or os.getenv("GROQ_API_KEY", "no-key"),
+            base_url="https://api.groq.com/openai/v1",
+        )
+        models = groq.models.list()
+        names = [m.id for m in models.data][:5]
+        lines.append(f"**Groq (Llama)** ✓ — available models: {', '.join(names)}")
     except Exception as exc:
-        lines.append(f"**TogetherAI** ✗ — {exc}")
+        lines.append(f"**Groq (Llama)** ✗ — {exc}")
 
     return "\n\n".join(lines)
 
@@ -175,7 +179,7 @@ def render_lab_tables(json_text: str):
 def run_pipeline(
     uploaded_files,
     openai_key: str,
-    together_key: str,
+    groq_key: str,
     llm_choice: str,
     max_steps: int,
     max_workers_val: int,
@@ -194,8 +198,8 @@ def run_pipeline(
     # Inject API keys into environment if provided
     if openai_key.strip():
         os.environ["OPENAI_API_KEY"] = openai_key.strip()
-    if together_key.strip():
-        os.environ["TOGETHER_API_KEY"] = together_key.strip()
+    if groq_key.strip():
+        os.environ["GROQ_API_KEY"] = groq_key.strip()
 
     output_dir = output_dir.strip() or "output"
     os.makedirs(output_dir, exist_ok=True)
@@ -334,9 +338,9 @@ DESCRIPTION = """
 
 **Agentic pipeline** for extracting structured data from documents using Reinforcement Learning.
 
-| Gymnasium | LangChain | OpenAI | TogetherAI | PaddleOCR | OpenCV | Jinja2 |
-|:---------:|:---------:|:------:|:----------:|:---------:|:------:|:------:|
-| RL Environments | Prompt Optimization | GPT-4o-mini | Llama (via Together) | OCR | Image Reading | Prompt Templates |
+| Gymnasium | LangChain | OpenAI | Groq (Llama) | PaddleOCR | OpenCV | Jinja2 |
+|:---------:|:---------:|:------:|:------------:|:---------:|:------:|:------:|
+| RL Environments | Prompt Optimization | GPT-4o-mini | Llama-3.3-70b (free) | OCR | Image Reading | Prompt Templates |
 
 > Add your API keys in the **API Keys** tab before processing.
 """
@@ -387,7 +391,7 @@ def build_ui(lab_mode: bool = False) -> gr.Blocks:
                             label="LLM Backend",
                             choices=["gpt", "llama"],
                             value="gpt",
-                            info='"gpt" uses OpenAI gpt-4o-mini. "llama" uses TogetherAI Llama.',
+                            info='"gpt" uses OpenAI gpt-4o-mini. "llama" uses Groq Llama-3.3-70b (free).',
                         )
 
                         gr.Markdown("### Processing Options")
@@ -455,13 +459,13 @@ def build_ui(lab_mode: bool = False) -> gr.Blocks:
                         download_btn = gr.File(label="Download Results JSON")
 
                 # API keys are read from the API Keys tab
-                _api_openai  = gr.State(value="")
-                _api_together = gr.State(value="")
+                _api_openai = gr.State(value="")
+                _api_groq   = gr.State(value="")
 
                 proc_evt = process_btn.click(
                     fn=run_pipeline,
                     inputs=[
-                        files_input, _api_openai, _api_together,
+                        files_input, _api_openai, _api_groq,
                         llm_choice_dd, max_steps_sl, max_workers_sl,
                         schema_gt_tb, extraction_gt_tb,
                         force_cb, output_dir_tb,
@@ -542,16 +546,17 @@ def build_ui(lab_mode: bool = False) -> gr.Blocks:
                     ak_openai   = gr.Textbox(label="OpenAI API Key",
                                               value=os.getenv("OPENAI_API_KEY", ""),
                                               type="password", placeholder="sk-...")
-                    ak_together = gr.Textbox(label="TogetherAI API Key",
-                                              value=os.getenv("TOGETHER_API_KEY", ""),
-                                              type="password", placeholder="...")
+                    ak_groq = gr.Textbox(label="Groq API Key (free — llama choice)",
+                                          value=os.getenv("GROQ_API_KEY", ""),
+                                          type="password",
+                                          placeholder="gsk_... — get free at console.groq.com")
                 ak_check = gr.Button("Test Connections", variant="primary")
                 ak_status = gr.Markdown("—")
 
                 # Wire keys into the pipeline State components
                 ak_openai.change(fn=lambda k: k, inputs=[ak_openai], outputs=[_api_openai])
-                ak_together.change(fn=lambda k: k, inputs=[ak_together], outputs=[_api_together])
-                ak_check.click(fn=check_api_status, inputs=[ak_openai, ak_together],
+                ak_groq.change(fn=lambda k: k, inputs=[ak_groq], outputs=[_api_groq])
+                ak_check.click(fn=check_api_status, inputs=[ak_openai, ak_groq],
                                outputs=[ak_status])
 
             # ── Tab 5: Help ──────────────────────────────────────────────
@@ -560,14 +565,15 @@ def build_ui(lab_mode: bool = False) -> gr.Blocks:
 ## Quick Start
 
 ### 1. Get API Keys
-- **OpenAI**: https://platform.openai.com/api-keys
-- **TogetherAI**: https://api.together.xyz/settings/api-keys
+- **OpenAI** (required for `--llm-choice gpt`): https://platform.openai.com/api-keys
+- **Groq** (free, required for `--llm-choice llama`): https://console.groq.com
+- **LangChain/LangSmith** (optional — only for tracing): https://smith.langchain.com
 
 Add them to `.env`:
 ```
 OPENAI_API_KEY=sk-...
-TOGETHER_API_KEY=...
-LANGCHAIN_API_KEY=...
+GROQ_API_KEY=gsk_...
+LANGCHAIN_API_KEY=          # optional, leave blank to disable tracing
 ```
 
 ### 2. Install dependencies
@@ -588,7 +594,7 @@ python gui.py --lab    # pre-selects lab report type
 # GPT extraction (default)
 python main.py report.pdf --output-dir output
 
-# Llama extraction via TogetherAI
+# Llama extraction via Groq (free)
 python main.py report.pdf --llm-choice llama --output-dir output
 
 # Force lab report mode

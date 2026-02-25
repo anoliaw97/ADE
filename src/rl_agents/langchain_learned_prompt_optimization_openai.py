@@ -25,6 +25,13 @@ from dotenv import load_dotenv
 
 load_dotenv('.env')
 
+# LangSmith tracing is optional — the RL chain works fine without it.
+# If LANGCHAIN_API_KEY is set, LangSmith will automatically capture traces.
+# If not set, tracing is simply disabled and no error is raised.
+_langchain_key = os.getenv("LANGCHAIN_API_KEY", "").strip()
+if not _langchain_key:
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
+
 class OpenAIEmbedder:
     """Custom embedder class that uses OpenAI's embedding function"""
     

@@ -85,30 +85,45 @@ Reply with ONLY the exact category name from the list above — nothing else.
             messages=[{"role": "user", "content": prompt}],
             llm_choice=llm_choice,
             logprobs=True,
-            top_logprobs=1 if llm_choice == "gpt" else None,  # top_logprobs only supported by GPT
+            top_logprobs=1,  # supported by both OpenAI (GPT) and Groq (Llama)
             temperature=0.1,
         )
 
         classification = response.choices[0].message.content.strip()
 
-        # Handle logprobs differently for GPT and Llama
-        if llm_choice == "gpt":
-            top_two_logprobs = response.choices[0].logprobs.content[0].top_logprobs
-            html_content = ""
-            for i, logprob in enumerate(top_two_logprobs, start=1):
-                html_content += (
-                    f"<span style='color: cyan'>Output token {i}:</span> {logprob.token}, "
-                    f"<span style='color: darkorange'>logprobs:</span> {logprob.logprob}, "
-                    f"<span style='color: magenta'>linear probability:</span> {np.round(np.exp(logprob.logprob)*100,2)}%<br>"
-                )
-            display(HTML(html_content))
-            linear_probability = np.round(np.exp(top_two_logprobs[0].logprob)*100,2)
-        else:  # llama
-            token_logprob = response.choices[0].logprobs.token_logprobs[0]  # Get first token's logprob
-            linear_probability = np.round(np.exp(token_logprob)*100,2)
-            print(f"Token: {response.choices[0].logprobs.tokens[0]}")
-            print(f"Logprob: {token_logprob}")
-            print(f"Linear probability: {linear_probability}%")
+        # Extract confidence (linear probability) from logprobs.
+        # GPT returns top_logprobs; Groq/Llama returns logprobs.content[i].logprob
+        # (same OpenAI format).  Together AI used token_logprobs — kept as fallback.
+        linear_probability = 90.0  # safe default
+        try:
+            if llm_choice == "gpt":
+                top_lp = response.choices[0].logprobs.content[0].top_logprobs
+                html_content = ""
+                for i, logprob in enumerate(top_lp, start=1):
+                    html_content += (
+                        f"<span style='color: cyan'>Output token {i}:</span> {logprob.token}, "
+                        f"<span style='color: darkorange'>logprobs:</span> {logprob.logprob}, "
+                        f"<span style='color: magenta'>linear probability:</span> "
+                        f"{np.round(np.exp(logprob.logprob)*100, 2)}%<br>"
+                    )
+                display(HTML(html_content))
+                linear_probability = np.round(np.exp(top_lp[0].logprob) * 100, 2)
+            else:
+                # Groq / OpenAI-compatible format: logprobs.content[i].logprob
+                lp_content = response.choices[0].logprobs.content
+                if lp_content:
+                    lp_val = lp_content[0].logprob
+                    linear_probability = np.round(np.exp(lp_val) * 100, 2)
+                    print(f"Token: {lp_content[0].token}")
+                    print(f"Logprob: {lp_val}")
+                    print(f"Linear probability: {linear_probability}%")
+                else:
+                    # Fallback: Together AI legacy format
+                    token_logprob = response.choices[0].logprobs.token_logprobs[0]
+                    linear_probability = np.round(np.exp(token_logprob) * 100, 2)
+                    print(f"Linear probability (legacy): {linear_probability}%")
+        except Exception as lp_err:
+            print(f"Could not extract logprob (using default 90%): {lp_err}")
 
         print("\n")
 
