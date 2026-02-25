@@ -11,6 +11,22 @@ from multiprocessing import Pool, cpu_count
 from langchain_openai import ChatOpenAI
 
 from src.utils.read_data_utils import DocumentReader
+
+
+def _make_chat_model(llm_choice: str) -> ChatOpenAI:
+    """Return a ChatOpenAI-compatible model for the given llm_choice.
+
+    'gpt'   → OpenAI gpt-4o-mini  (requires OPENAI_API_KEY)
+    'llama' → Groq llama-3.3-70b  (requires GROQ_API_KEY, free tier)
+    """
+    if llm_choice.lower() == "llama":
+        return ChatOpenAI(
+            model="llama-3.3-70b-versatile",
+            openai_api_key=os.getenv("GROQ_API_KEY", "no-key"),
+            openai_api_base="https://api.groq.com/openai/v1",
+            temperature=0.6,
+        )
+    return ChatOpenAI(model="gpt-4o-mini", temperature=0.6)
 from src.utils.LLM_utils import get_completion_gpt4
 from src.utils.load_baseprompts_utils import load_prompt_from_file, load_schema_prompt_for_type
 from src.utils.jsonparser_utils import clean_llm_output, json_to_dataframe
@@ -97,7 +113,7 @@ def process_document(file_path: str, extraction_groundtruth: dict, output_dir: s
 
     # Initialize components
     reader = DocumentReader()
-    chat_model = ChatOpenAI(model="gpt-4o-mini", temperature=0.6)
+    chat_model = _make_chat_model(llm_choice)  # routes to Groq (free) when llm_choice='llama'
     
     logging.info(f"Processing document: {file_path}")
     

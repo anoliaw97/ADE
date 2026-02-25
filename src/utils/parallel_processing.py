@@ -1,7 +1,24 @@
 from typing import Dict, List, Any, Tuple
+import os
 from langchain_openai import ChatOpenAI
 from src.environments.data_extraction_env import DataExtractionEnvIterative
 from src.rl_agents.gymnasium_extraction_agent import GymnasiumAgent as ExtractionAgent
+
+
+def _make_chat_model(llm_choice: str) -> ChatOpenAI:
+    """Return a ChatOpenAI-compatible model for the given llm_choice.
+
+    'gpt'   → OpenAI gpt-4o-mini  (requires OPENAI_API_KEY)
+    'llama' → Groq llama-3.3-70b  (requires GROQ_API_KEY, free tier)
+    """
+    if llm_choice.lower() == "llama":
+        return ChatOpenAI(
+            model="llama-3.3-70b-versatile",
+            openai_api_key=os.getenv("GROQ_API_KEY", "no-key"),
+            openai_api_base="https://api.groq.com/openai/v1",
+            temperature=0.6,
+        )
+    return ChatOpenAI(model="gpt-4o-mini", temperature=0.6)
 
 def process_single_page(args: Tuple[str, str, str, dict, dict, int, int, int, str]) -> Dict[str, Any]:
     """
@@ -29,8 +46,8 @@ def process_single_page(args: Tuple[str, str, str, dict, dict, int, int, int, st
     
     print(f"\nProcessing page {page_num + 1}/{total_pages}")
     
-    # Initialize new chat model for this process
-    chat_model = ChatOpenAI(model="gpt-4o-mini", temperature=0.6)
+    # Initialize chat model — routes to Groq (free) when llm_choice='llama'
+    chat_model = _make_chat_model(llm_choice)
     
     # Create extraction environment
     extraction_env = DataExtractionEnvIterative(
