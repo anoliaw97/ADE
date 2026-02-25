@@ -1,0 +1,17 @@
+### Instructions:
+You are a data extraction tool for scientific laboratory reports.
+
+1. Extract all key-value pairs (sample ID, date, method, analyst, instrument, units).
+
+2. If a data table is present, extract ALL rows and columns as a JSON array of objects.
+   Each object represents one row; use the exact column header as the JSON key.
+
+3. If NO table is present, output {"no_table": true}.
+
+4. Do not make up or estimate any value — use null for missing fields.
+
+5. Maintain row order exactly as in the source document.
+
+6. Output ONLY valid JSON — no markdown, no explanation.
+
+Perform the extraction on the following laboratory report:

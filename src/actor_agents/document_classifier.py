@@ -11,7 +11,31 @@ import numpy as np
 from IPython.display import display, HTML
 
 
-CLASSES = ["Invoice", "Purchase Order", "Bill", "Receipt", "Financial Document", "Salary Slip"]
+# Original document categories
+_BASE_CLASSES = ["Invoice", "Purchase Order", "Bill", "Receipt", "Financial Document", "Salary Slip"]
+
+# Scientific laboratory report subcategories
+LAB_REPORT_CLASSES = [
+    "Chemical Analysis Report",
+    "Environmental Analysis Report",
+    "Microbiology Report",
+    "Material Testing Report",
+    "Clinical Laboratory Report",
+    "Geotechnical Report",
+    "Food Analysis Report",
+    "General Laboratory Report",
+]
+
+CLASSES = [*_BASE_CLASSES, *LAB_REPORT_CLASSES]
+
+# Set of all lab subcategory names for fast membership check
+LAB_REPORT_TYPES = set(LAB_REPORT_CLASSES)
+
+
+def is_lab_report(doc_type: str) -> bool:
+    """Return True if *doc_type* is any recognised laboratory report subcategory."""
+    return doc_type in LAB_REPORT_TYPES
+
 
 def classify_document_with_llm(document_text, llm_choice):
     """
@@ -23,7 +47,9 @@ def classify_document_with_llm(document_text, llm_choice):
 
     CLASSIFICATION_PROMPT = PromptTemplate(
         template="""
-I have a form-like document, and I want you to classify it into one of the following categories:
+I have a document, and I want you to classify it into one of the following categories:
+
+General documents:
 - Invoice
 - Purchase Order
 - Utility Bill
@@ -31,18 +57,29 @@ I have a form-like document, and I want you to classify it into one of the follo
 - Financial Document
 - Salary Slip
 
+Scientific laboratory reports:
+- Chemical Analysis Report  (concentrations, calibration, LOD/LOQ, titration)
+- Environmental Analysis Report  (water/air/soil sampling, regulatory limits)
+- Microbiology Report  (colony counts, MPN, zone-of-inhibition, sterility)
+- Material Testing Report  (tensile/compression strength, hardness, fatigue)
+- Clinical Laboratory Report  (patient test results, reference ranges, flags)
+- Geotechnical Report  (soil classification, bearing capacity, SPT/CPT data)
+- Food Analysis Report  (nutritional composition, contaminants, shelf-life)
+- General Laboratory Report  (any other scientific or technical lab document)
+
 Here is the content of the document:
 
 {{text}}
 
-Based on the content, which category does this document belong to? Please reply with only the category name.
+Based on the content, which category does this document belong to?
+Reply with ONLY the exact category name from the list above — nothing else.
     """,
     input_variables=["text"]
     )
     prompt = CLASSIFICATION_PROMPT.format(
         text = document_text)
 
-    # Call the OpenAI API to classify the document
+    # Call the API to classify the document
     try:
         response = get_llm_completion(
             messages=[{"role": "user", "content": prompt}],
@@ -51,8 +88,8 @@ Based on the content, which category does this document belong to? Please reply 
             top_logprobs=1 if llm_choice == "gpt" else None,  # top_logprobs only supported by GPT
             temperature=0.1,
         )
-        
-        classification = response.choices[0].message.content
+
+        classification = response.choices[0].message.content.strip()
 
         # Handle logprobs differently for GPT and Llama
         if llm_choice == "gpt":
@@ -72,9 +109,9 @@ Based on the content, which category does this document belong to? Please reply 
             print(f"Token: {response.choices[0].logprobs.tokens[0]}")
             print(f"Logprob: {token_logprob}")
             print(f"Linear probability: {linear_probability}%")
-        
+
         print("\n")
-        
+
         if classification in CLASSES:
             return classification, linear_probability
         else:

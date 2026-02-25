@@ -101,3 +101,6 @@ flask
 flask-socketio
 werkzeug
 eventlet
+
+# GUI
+gradio>=4.0.0
