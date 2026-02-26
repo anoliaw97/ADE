@@ -1,0 +1,9 @@
+<!doctype html>
+<html><head><title>Screenshots</title></head><body>
+<h2>Screenshots Gallery</h2>
+<div class="gallery">
+  {% for img in images %}
+  <img src="/static/{{ img }}" alt="screenshot">
+  {% endfor %}
+</div>
+</body></html>

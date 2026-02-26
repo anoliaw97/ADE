@@ -1,0 +1,12 @@
+/* Light styling mirroring the Tkinter UI constraints */
+:root { --navy: #002060; color-scheme: light; }
+body { font-family: Arial, sans-serif; background: #fff; color: #000; }
+header { padding: 12px 16px; border-bottom: 1px solid #eee; display:flex; align-items:center; justify-content:space-between; }
+h1 { font-size: 20px; margin:0; }
+main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
+section { border:1px solid #eee; border-radius:6px; padding:12px; background:#fff; }
+.gallery{ display:flex; flex-wrap: wrap; gap: 12px; }
+.gallery img{ max-width: 100%; height: auto; border:1px solid #ddd; }
+table{ border-collapse: collapse; width:100%; }
+th, td { border: 1px solid #ddd; padding: 6px 8px; font-size: 12px; }
+th { background: var(--navy); color: white; }

@@ -1,0 +1,5 @@
+flask
+pandas
+openpyxl
+pdf2image
+Pillow

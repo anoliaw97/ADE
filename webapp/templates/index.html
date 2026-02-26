@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>olmOCR Agentic Document Extraction</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      font-family: Arial, sans-serif; 
+      background: #fff; 
+      color: #000; 
+      margin: 0; 
+      padding: 0;
+      min-height: 100vh;
+    }
+    
+    /* Top Bar */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 20px;
+      background: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+    }
+    .top-bar h1 {
+      font-size: 18px;
+      margin: 0;
+      color: #002060;
+    }
+    .model-status {
+      font-size: 12px;
+      color: gray;
+    }
+    .model-status.loaded {
+      color: green;
+      font-weight: bold;
+    }
+    
+    /* Control Bar */
+    .control-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      background: #eee;
+      border-bottom: 1px solid #ccc;
+      flex-wrap: wrap;
+    }
+    .control-bar button {
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: 1px solid #aaa;
+      background: #f5f5f5;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .control-bar button:hover {
+      background: #e0e0e0;
+    }
+    .control-bar .separator {
+      width: 1px;
+      height: 24px;
+      background: #ccc;
+      margin: 0 5px;
+    }
+    .control-bar label {
+      font-size: 12px;
+    }
+    .file-label, .page-label, .output-label {
+      font-size: 11px;
+      color: #666;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    /* Main Content */
+    .main-content {
+      display: flex;
+      height: calc(100vh - 180px);
+    }
+    
+    /* Left Panel */
+    .left-panel {
+      width: 450px;
+      min-width: 400px;
+      border-right: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+      background: #fafafa;
+    }
+    .preview-frame {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #ddd;
+      margin: 10px;
+      border-radius: 4px;
+      background: #2d2d2d;
+    }
+    .preview-frame .title {
+      background: #002060;
+      color: white;
+      padding: 8px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .page-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 8px;
+      background: #ddd;
+    }
+    .page-nav button {
+      padding: 4px 10px;
+    }
+    .preview-canvas {
+      flex: 1;
+      background: #2d2d2d;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+    }
+    .preview-canvas img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .thumbnails-frame {
+      height: 130px;
+      border: 1px solid #ddd;
+      margin: 0 10px 10px 10px;
+      border-radius: 4px;
+      background: #1e1e1e;
+    }
+    .thumbnails-frame .title {
+      background: #333;
+      color: white;
+      padding: 5px 8px;
+      font-size: 11px;
+    }
+    .thumbnails {
+      display: flex;
+      gap: 4px;
+      padding: 5px;
+      overflow-x: auto;
+      height: calc(100% - 25px);
+    }
+    .thumb {
+      cursor: pointer;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .thumb img {
+      width: 60px;
+      height: 80px;
+      object-fit: contain;
+      border: 2px solid transparent;
+    }
+    .thumb.active img {
+      border-color: #002060;
+    }
+    .thumb span {
+      color: white;
+      font-size: 10px;
+    }
+    
+    /* Right Panel */
+    .right-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    
+    /* Prompt Section */
+    .prompt-frame {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .prompt-frame .title {
+      background: #002060;
+      color: white;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .prompt-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      background: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+    }
+    .prompt-top label {
+      font-size: 12px;
+    }
+    .prompt-top select, .prompt-top input {
+      padding: 4px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    .prompt-top button {
+      padding: 4px 10px;
+      font-size: 11px;
+    }
+    .prompt-text {
+      width: 100%;
+      height: 80px;
+      padding: 8px;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      border: none;
+      resize: none;
+    }
+    .extract-buttons {
+      display: flex;
+      gap: 5px;
+      padding: 8px;
+      background: #f5f5f5;
+      border-top: 1px solid #ddd;
+    }
+    .extract-buttons button {
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .extract-btn {
+      flex: 1;
+      background: #002060 !important;
+      color: white !important;
+      border: none !important;
+    }
+    .stop-btn {
+      background: #c00 !important;
+      color: white !important;
+    }
+    
+    /* Results Section */
+    .results-frame {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 250px;
+    }
+    .results-frame .title {
+      background: #002060;
+      color: white;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .results-paned {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    .page-preview {
+      width: 40%;
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+    }
+    .page-preview .label {
+      padding: 5px;
+      font-size: 11px;
+      font-weight: bold;
+      background: #eee;
+    }
+    .page-preview canvas, .page-preview .preview-area {
+      flex: 1;
+      background: #1e1e1e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .page-preview canvas img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .token-label {
+      padding: 5px;
+      font-size: 10px;
+      background: #eee;
+      text-align: center;
+    }
+    .response-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .response-tabs {
+      display: flex;
+      background: #eee;
+      border-bottom: 1px solid #ddd;
+    }
+    .response-tab {
+      padding: 6px 15px;
+      font-size: 11px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+    }
+    .response-tab.active {
+      background: #1e1e1e;
+      color: white;
+    }
+    .response-content {
+      flex: 1;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 8px;
+      overflow: auto;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+    }
+    
+    /* Chat/Error Section */
+    .chat-frame {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    .chat-frame .title {
+      background: #002060;
+      color: white;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .chat-tabs {
+      display: flex;
+      background: #eee;
+      border-bottom: 1px solid #ddd;
+    }
+    .chat-tab {
+      padding: 6px 15px;
+      font-size: 11px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+    }
+    .chat-tab.active {
+      background: #1e1e2e;
+      color: white;
+    }
+    .chat-content, .error-content {
+      height: 120px;
+      overflow: auto;
+      padding: 8px;
+      font-family: Consolas, monospace;
+      font-size: 10px;
+    }
+    .chat-content {
+      background: #1e1e2e;
+      color: #cdd6f4;
+    }
+    .error-content {
+      background: #2d1f1f;
+      color: #f0a0a0;
+    }
+    .chat-input-area {
+      display: flex;
+      gap: 5px;
+      padding: 8px;
+      background: #eee;
+      border-top: 1px solid #ddd;
+    }
+    .chat-input-area label {
+      font-size: 11px;
+    }
+    .chat-input-area input {
+      flex: 1;
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .chat-input-area button {
+      padding: 5px 12px;
+      font-size: 11px;
+    }
+    
+    /* Bottom */
+    .bottom-bar {
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid #ccc;
+      background: #f5f5f5;
+    }
+    .progress-bar {
+      height: 6px;
+      background: #ddd;
+      display: none;
+    }
+    .progress-bar.active {
+      display: block;
+    }
+    .progress-bar .fill {
+      height: 100%;
+      background: #002060;
+      width: 0%;
+      transition: width 0.3s;
+    }
+    .status-bar {
+      padding: 5px 10px;
+      font-size: 11px;
+      background: #eee;
+      border-top: 1px solid #ddd;
+    }
+    
+    /* Utility */
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="top-bar">
+  <h1>olmOCR Agentic Document Extraction</h1>
+  <div class="model-status" id="modelStatus">Models: Not loaded</div>
+</div>
+
+<!-- Control Bar -->
+<div class="control-bar">
+  <button onclick="loadVLM()">Load VLM</button>
+  <button onclick="loadLLM()">Load LLM</button>
+  
+  <div class="separator"></div>
+  
+  <label>Mode:</label>
+  <label><input type="radio" name="mode" value="single" checked onclick="setMode('single')"> Single</label>
+  <label><input type="radio" name="mode" value="batch" onclick="setMode('batch')"> Batch</label>
+  
+  <div class="separator"></div>
+  
+  <button onclick="document.getElementById('pdfInput').click()">Select Files</button>
+  <input type="file" id="pdfInput" accept=".pdf" style="display:none" onchange="handleUpload(event)" />
+  <span class="file-label" id="fileLabel">No files</span>
+  
+  <button onclick="selectAllPages()">Select All</button>
+  <button onclick="deselectAllPages()">Deselect</button>
+  <span class="page-label" id="pageLabel">0 pages</span>
+  
+  <div class="separator"></div>
+  
+  <button onclick="selectOutput()">Output</button>
+  <span class="output-label" id="outputLabel">Not set</span>
+</div>
+
+<!-- Main Content -->
+<div class="main-content">
+
+<!-- Left Panel -->
+<div class="left-panel">
+  <div class="preview-frame">
+    <div class="title">Document Preview & Page Selection</div>
+    <div class="page-nav">
+      <button onclick="prevPage()">Prev</button>
+      <span id="pageNavLabel">Page: 0 / 0</span>
+      <button onclick="nextPage()">Next</button>
+    </div>
+    <div class="preview-canvas" id="previewCanvas">
+      <p style="color:#888;">No PDF loaded</p>
+    </div>
+  </div>
+  
+  <div class="thumbnails-frame">
+    <div class="title">Page Thumbnails</div>
+    <div class="thumbnails" id="thumbnails"></div>
+  </div>
+</div>
+
+<!-- Right Panel -->
+<div class="right-panel">
+
+  <!-- Prompt Section -->
+  <div class="prompt-frame">
+    <div class="title">Extraction Prompt</div>
+    <div class="prompt-top">
+      <label>Type:</label>
+      <select id="promptChoice" onchange="onPromptChange()">
+        <option value="0">Default (Full OCR)</option>
+        <option value="1">Table Extraction</option>
+        <option value="2">Custom</option>
+      </select>
+      <button onclick="optimizePrompt()">Optimize</button>
+      <button onclick="savePrompt()">Save</button>
+    </div>
+    <textarea class="prompt-text" id="promptText">{{ DEFAULT_OLMOCR_PROMPT }}</textarea>
+    <div class="extract-buttons">
+      <button class="extract-btn" onclick="startExtraction()">START EXTRACTION</button>
+      <button class="stop-btn" onclick="stopExtraction()" id="stopBtn">STOP</button>
+    </div>
+  </div>
+
+  <!-- Results Section -->
+  <div class="results-frame">
+    <div class="title">Extraction Results</div>
+    <div class="results-paned">
+      <div class="page-preview">
+        <div class="label">Current Page</div>
+        <div class="preview-area" id="resultPreview">
+          <p style="color:#666;">No results</p>
+        </div>
+        <div class="token-label" id="tokenLabel">Tokens: -</div>
+      </div>
+      <div class="response-panel">
+        <div class="response-tabs">
+          <button class="response-tab active" onclick="showResponseTab('raw')">Raw Response</button>
+          <button class="response-tab" onclick="showResponseTab('prompt')">Prompt Used</button>
+        </div>
+        <div class="response-content" id="rawResponse">No extraction results yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat/Error Section -->
+  <div class="chat-frame">
+    <div class="title">Chat & Logs (Selectable)</div>
+    <div class="chat-tabs">
+      <button class="chat-tab active" onclick="showChatTab('chat')">Chat</button>
+      <button class="chat-tab" onclick="showChatTab('error')">Error Log (Copyable)</button>
+    </div>
+    <div class="chat-content" id="chatContent">System ready. Commands: 'load vlm', 'load llm', 'extract', 'stop', 'help'</div>
+    <div class="error-content hidden" id="errorContent"></div>
+    <div class="chat-input-area">
+      <label>You:</label>
+      <input type="text" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChat()" />
+      <button onclick="sendChat()">Send</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- Bottom Bar -->
+<div class="bottom-bar">
+  <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+  <div class="status-bar" id="statusBar">Ready</div>
+</div>
+
+<script>
+  // State
+  let currentPdf = null;
+  let currentPage = 0;
+  let totalPages = 0;
+  let selectedPages = [];
+  let extractedData = [];
+  let mode = 'single';
+  let outputDir = null;
+  
+  // Initialize
+  function init() {
+    updateModelStatus();
+    setInterval(updateModelStatus, 2000);
+  }
+  
+  function updateModelStatus() {
+    fetch('/status')
+      .then(r => r.json())
+      .then(status => {
+        const el = document.getElementById('modelStatus');
+        const parts = [];
+        if (status.vlm_loaded) parts.push('VLM');
+        if (status.llm_loaded) parts.push('LLM');
+        if (parts.length > 0) {
+          el.textContent = 'Models: ' + parts.join(', ');
+          el.className = 'model-status loaded';
+        } else {
+          el.textContent = 'Models: Not loaded';
+          el.className = 'model-status';
+        }
+      });
+  }
+  
+  // File operations
+  function handleUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('pdf', file);
+    
+    setStatus('Loading PDF...');
+    
+    fetch('/upload', {method: 'POST', body: formData})
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          setStatus('Error: ' + data.error);
+          return;
+        }
+        currentPdf = data;
+        totalPages = data.pages;
+        selectedPages = list(range(totalPages));
+        currentPage = 0;
+        
+        document.getElementById('fileLabel').textContent = data.name;
+        document.getElementById('pageLabel').textContent = totalPages + ' pages';
+        
+        loadPage(1);
+        loadThumbnails();
+        setStatus('Loaded ' + totalPages + ' pages');
+      });
+  }
+  
+  function loadPage(page) {
+    if (!currentPdf) return;
+    currentPage = page - 1;
+    
+    fetch('/pdf/page/' + currentPdf.name + '/' + page)
+      .then(r => r.json())
+      .then(data => {
+        if (data.image) {
+          document.getElementById('previewCanvas').innerHTML = 
+            '<img src="data:image/png;base64,' + data.image + '" />';
+          document.getElementById('pageNavLabel').textContent = 'Page: ' + page + ' / ' + totalPages;
+          
+          // Update result preview
+          if (extractedData[currentPage]) {
+            showResult(currentPage);
+          }
+        }
+      });
+  }
+  
+  function loadThumbnails() {
+    if (!currentPdf) return;
+    let html = '';
+    for (let i = 1; i <= totalPages; i++) {
+      const active = (i === currentPage + 1) ? 'active' : '';
+      html += '<div class="thumb ' + active + '" onclick="loadPage(' + i + ')">' +
+        '<img src="/pdf/thumb/' + currentPdf.name + '/' + i + '" /><br>' +
+        '<span>P' + i + '</span></div>';
+    }
+    document.getElementById('thumbnails').innerHTML = html;
+  }
+  
+  function prevPage() {
+    if (currentPage > 0) loadPage(currentPage);
+  }
+  
+  function nextPage() {
+    if (currentPage < totalPages - 1) loadPage(currentPage + 2);
+  }
+  
+  function selectAllPages() {
+    selectedPages = list(range(totalPages));
+    document.getElementById('pageLabel').textContent = selectedPages.length + ' pages';
+  }
+  
+  function deselectAllPages() {
+    selectedPages = [];
+    document.getElementById('pageLabel').textContent = '0 pages';
+  }
+  
+  function setMode(m) {
+    mode = m;
+  }
+  
+  function selectOutput() {
+    outputDir = app.config['OUTPUT_DIR'] || 'output';
+    document.getElementById('outputLabel').textContent = outputDir.split('/').pop();
+  }
+  
+  // Prompt operations
+  function onPromptChange() {
+    const idx = parseInt(document.getElementById('promptChoice').value);
+    const prompts = [
+      {{ DEFAULT_OLMOCR_PROMPT | json | safe }},
+      {{ TABLE_PROMPT | json | safe }},
+      document.getElementById('promptText').value
+    ];
+    document.getElementById('promptText').value = prompts[idx];
+  }
+  
+  function optimizePrompt() {
+    const docType = prompt('Document Type (e.g., Invoice, Lab Report):');
+    const goal = prompt('Extraction Goal (e.g., Extract line items):');
+    if (!docType || !goal) return;
+    
+    fetch('/optimize_prompt', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({doc_type: docType, goal: goal})
+    }).then(r => r.json()).then(data => {
+      document.getElementById('promptText').value = data.prompt;
+      document.getElementById('promptChoice').value = '2';
+      setStatus('Prompt optimized!');
+    });
+  }
+  
+  function savePrompt() {
+    const text = document.getElementById('promptText').value;
+    const blob = new Blob([text], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'prompt.txt';
+    a.click();
+  }
+  
+  // Extraction
+  function startExtraction() {
+    if (!currentPdf) {
+      setStatus('No PDF loaded');
+      return;
+    }
+    
+    const prompt = document.getElementById('promptText').value;
+    showProgress(true);
+    setStatus('Extracting...');
+    
+    fetch('/extract', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt: prompt, pages: selectedPages})
+    }).then(r => r.json()).then(data => {
+      showProgress(false);
+      if (data.error) {
+        setStatus('Error: ' + data.error);
+        return;
+      }
+      extractedData = data;
+      setStatus('Done! ' + data.pages + ' pages, ' + data.total_tokens + ' tokens');
+      
+      // Load results
+      fetch('/results').then(r => r.json()).then(results => {
+        extractedData = results;
+        if (results.length > 0) {
+          showResult(0);
+        }
+      });
+    });
+  }
+  
+  function stopExtraction() {
+    fetch('/stop', {method: 'POST'}).then(() => {
+      showProgress(false);
+      setStatus('Stopped');
+    });
+  }
+  
+  function showResult(pageIdx) {
+    if (pageIdx >= extractedData.length) return;
+    const result = extractedData[pageIdx];
+    
+    // Show page preview
+    if (currentPdf) {
+      loadPage(pageIdx + 1);
+    }
+    
+    // Show tokens
+    const tokens = result;
+    document.getElementById('tokenLabel').textContent = 
+      'Tokens: In=' + tokens.input_tokens + ' | Out=' + tokens.output_tokens + ' | Total=' + tokens.total_tokens;
+    
+    // Show raw response
+    document.getElementById('rawResponse').textContent = result.raw_response;
+  }
+  
+  function showResponseTab(tab) {
+    const tabs = document.querySelectorAll('.response-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    if (tab === 'raw') {
+      document.getElementById('rawResponse').textContent = 
+        extractedData[currentPage]?.raw_response || 'No results';
+    } else {
+      document.getElementById('rawResponse').textContent = 
+        extractedData[currentPage]?.prompt_used || document.getElementById('promptText').value;
+    }
+  }
+  
+  // Model loading
+  function loadVLM() {
+    setStatus('Loading VLM...');
+    fetch('/load_vlm', {method: 'POST'}).then(r => r.json()).then(data => {
+      setStatus(data.message);
+    });
+  }
+  
+  function loadLLM() {
+    setStatus('Loading LLM...');
+    fetch('/load_llm', {method: 'POST'}).then(r => r.json()).then(data => {
+      setStatus(data.message);
+    });
+  }
+  
+  // Chat
+  function sendChat() {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+    
+    input.value = '';
+    
+    fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: msg})
+    }).then(r => r.json()).then(data => {
+      updateChatDisplay(data.messages || []);
+    });
+  }
+  
+  function updateChatDisplay(messages) {
+    let html = '';
+    messages.forEach(m => {
+      const color = m.role === 'user' ? '#89b4fa' : (m.role === 'assistant' ? '#a6e3a1' : '#9399b2');
+      html += '<div style="color:' + color + ';">' + m.content + '</div>';
+    });
+    document.getElementById('chatContent').innerHTML = html;
+  }
+  
+  function showChatTab(tab) {
+    const tabs = document.querySelectorAll('.chat-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    document.getElementById('chatContent').classList.toggle('hidden', tab !== 'chat');
+    document.getElementById('errorContent').classList.toggle('hidden', tab !== 'error');
+  }
+  
+  // Utility
+  function setStatus(msg) {
+    document.getElementById('statusBar').textContent = msg;
+  }
+  
+  function showProgress(show) {
+    document.getElementById('progressBar').classList.toggle('active', show);
+    document.getElementById('progressFill').style.width = show ? '100%' : '0%';
+  }
+  
+  function list(n) {
+    return Array.from({length: n}, (_, i) => i);
+  }
+  
+  // Start
+  init();
+</script>
+
+</body>
+</html>

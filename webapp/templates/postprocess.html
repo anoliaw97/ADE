@@ -1,0 +1,9 @@
+<!doctype html>
+<html>
+  <head><title>Post-Process</title></head>
+  <body>
+    <h2>Post-Process (Document-wide)</h2>
+    <p>Records: {{ records|length if records else 0 }}</p>
+    <a href="/export?format=xlsx">Export Excel</a> | <a href="/export?format=csv">Export CSV</a> | <a href="/export?format=json">Export JSON</a>
+  </body>
+  </html>

@@ -1,0 +1,9 @@
+<!doctype html>
+<html><head><title>Template</title></head><body>
+<h2>Upload Column Template (CSV)</h2>
+<form method="post" enctype="multipart/form-data" action="/template">
+  <input type="file" name="template">
+  <button type="submit">Upload</button>
+</form>
+<p>Current columns: {{ cols }}</p>
+</body></html>
